@@ -1,14 +1,15 @@
-from flask import Flask, request, jsonify
+from fastapi import FastAPI, File, UploadFile, HTTPException
 import tensorflow as tf
 import numpy as np
 from PIL import Image
 import io
 import os
 
-app = Flask(__name__)
+app = FastAPI()
 
 MODEL_PATH = "fine_tuned_model.h5"
 
+# Load the model
 if os.path.exists(MODEL_PATH):
     print("Loading fine-tuned model...")
     model = tf.keras.models.load_model(MODEL_PATH)
@@ -28,7 +29,8 @@ else:
         tf.keras.layers.Dense(10, activation='softmax') 
     ])
 
-def extract_features(image_data):
+# Extract features from an image
+def extract_features(image_data: bytes) -> list:
     img = Image.open(io.BytesIO(image_data))
     img = img.resize((224, 224))
     img_array = np.array(img).astype('float32') / 255.0
@@ -37,32 +39,30 @@ def extract_features(image_data):
     features = model.predict(img_array)
     return features.flatten().tolist()
 
-@app.route('/extract_features', methods=['POST'])
-def extract_features_api():
-    if 'image' not in request.files:
-        return jsonify({"error": "No image provided"}), 400
+# Endpoint for feature extraction
+@app.post("/extract_features")
+async def extract_features_api(file: UploadFile = File(...)):
+    if not file.content_type.startswith('image/'):
+        raise HTTPException(status_code=400, detail="File must be an image")
 
-    image = request.files['image']
-    image_data = image.read()
-
+    image_data = await file.read()
     try:
         features = extract_features(image_data)
-        return jsonify({"features": features})
+        return {"features": features}
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.route('/update_model', methods=['POST'])
-def update_model():
-    if 'model' not in request.files:
-        return jsonify({"error": "No model file provided"}), 400
+# Endpoint for updating the model
+@app.post("/update_model")
+async def update_model(file: UploadFile = File(...)):
+    if not file.filename.endswith('.h5'):
+        raise HTTPException(status_code=400, detail="File must be a .h5 model")
 
-    model_file = request.files['model']
-    model_file.save(MODEL_PATH)
+    model_data = await file.read()
+    with open(MODEL_PATH, "wb") as f:
+        f.write(model_data)
 
     global model
     model = tf.keras.models.load_model(MODEL_PATH)
 
-    return jsonify({"message": "Model updated successfully!"})
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5001, debug=True)
+    return {"message": "Model updated successfully!"}
