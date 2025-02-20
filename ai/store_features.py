@@ -4,7 +4,7 @@ import tensorflow as tf
 import numpy as np
 from PIL import Image
 import io
-from app import app  # Assuming app.py is in the same directory
+from Moddetest.ai.app import app  # Assuming app.py is in the same directory
 
 mongo = PyMongo(app)
 
